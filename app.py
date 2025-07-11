@@ -17,7 +17,7 @@ tokens_col = db["tokens"]  # New collection for tokens
 
 # ✅ TrueCaptcha credentials
 TRUECAPTCHA_USERID = "Alvish"
-TRUECAPTCHA_APIKEY = "zH29k4ht5R8UWhpFifO8"
+TRUECAPTCHA_APIKEY = "87v24q7i9VZDXsOi8CAG"
 
 # ==========================
 # ✅ Endpoint: /generate-token
