@@ -2,8 +2,9 @@ import os
 import uuid
 import logging
 from datetime import datetime
-from threading import Semaphore
+from threading import Semaphore, Thread
 from concurrent.futures import ThreadPoolExecutor
+import time
 
 from flask import Flask, request, jsonify
 from flask_cors import CORS
@@ -11,7 +12,6 @@ from pymongo import MongoClient
 import requests
 
 # ----------------------- Configuration -----------------------
-# Use environment variables in production. Fallback to defaults if not set.
 MONGO_URI = os.environ.get("MONGO_URI") or (
     "mongodb+srv://cloudman549:cloudman%40100@cluster0.7s7qba2.mongodb.net/license_db?retryWrites=true&w=majority&appName=Cluster0"
 )
@@ -52,6 +52,10 @@ db = client[DB_NAME]
 licenses_col = db.get_collection("licenses")
 tokens_col = db.get_collection("tokens")
 
+# Global flag to track background task status
+is_background_task_running = False
+background_thread = None
+
 # Ensure indexes
 try:
     licenses_col.create_index("key", unique=True)
@@ -78,6 +82,35 @@ def validate_license(license_key: str):
     except Exception as e:
         logger.error(f"License validation failed: {str(e)}")
         return None
+
+def check_and_drop_empty_tokens():
+    """Check if tokens collection is empty and drop it if so, then stop the task."""
+    global is_background_task_running
+    try:
+        while is_background_task_running:
+            time.sleep(60)  # Check every 60 seconds
+            with client.start_session() as session:
+                with session.start_transaction():
+                    if tokens_col.count_documents({}, session=session) == 0:
+                        tokens_col.drop(session=session)
+                        logger.info("Tokens collection dropped as it was empty")
+                        is_background_task_running = False  # Stop the task
+                        break
+    except Exception as e:
+        logger.error(f"Failed to check or drop tokens collection: {str(e)}")
+
+def start_background_task():
+    """Start a background thread to periodically check and drop empty tokens collection."""
+    global is_background_task_running, background_thread
+    try:
+        if not is_background_task_running:
+            is_background_task_running = True
+            background_thread = Thread(target=check_and_drop_empty_tokens, daemon=True)
+            background_thread.start()
+            logger.info("Background task for checking empty tokens collection started")
+    except Exception as e:
+        logger.error(f"Failed to start background task: {str(e)}")
+        is_background_task_running = False
 
 # ----------------------- Routes -----------------------
 
@@ -125,6 +158,10 @@ def generate_token():
                 "used": False
             }
             tokens_col.insert_one(token_doc)
+
+            # Start background task if not already running
+            start_background_task()
+
             return token
 
         future = executor.submit(_generate_token)
@@ -227,13 +264,13 @@ def health():
         logger.error(f"Health check failed: {str(e)}")
         return jsonify({"status": "error", "error": str(e)}), 500
 
-# ----------------------- Main -----------------------
-# if __name__ == '__main__':
-#     try:
-#         logger.info(f"Starting server with {WORKER_COUNT} workers")
-#         from gevent.pywsgi import WSGIServer
-#         http_server = WSGIServer(('0.0.0.0', 5000), app)
-#         http_server.serve_forever()
-#     except Exception as e:
-#         logger.error(f"Server failed to start: {str(e)}")
-#         raise
+# ----------------------- Start Background Task -----------------------
+if __name__ == '__main__':
+    try:
+        logger.info(f"Starting server with {WORKER_COUNT} workers")
+        from gevent.pywsgi import WSGIServer
+        http_server = WSGIServer(('0.0.0.0', 5000), app)
+        http_server.serve_forever()
+    except Exception as e:
+        logger.error(f"Server failed to start: {str(e)}")
+        raise
