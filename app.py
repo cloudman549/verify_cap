@@ -3,14 +3,17 @@ from flask_cors import CORS
 from pymongo import MongoClient
 from datetime import datetime
 import uuid
-import requests
+import asyncio
+import httpx  # async HTTP client
 
 app = Flask(__name__)
 CORS(app)
 app.config['JSON_AS_ASCII'] = False  # Hindi/Unicode support
 
 # ✅ MongoDB Atlas connection
-client = MongoClient("mongodb+srv://cloudman549:cloudman%40100@cluster0.7s7qba2.mongodb.net/license_db?retryWrites=true&w=majority&appName=Cluster0")
+client = MongoClient(
+    "mongodb+srv://cloudman549:cloudman%40100@cluster0.7s7qba2.mongodb.net/license_db?retryWrites=true&w=majority&appName=Cluster0"
+)
 db = client["license_db"]
 licenses_col = db["licenses"]
 tokens_col = db["tokens"]
@@ -23,6 +26,7 @@ tokens_col.create_index("created_at", expireAfterSeconds=720)  # TTL index for 1
 # ✅ TrueCaptcha credentials
 TRUECAPTCHA_USERID = "Alvish"
 TRUECAPTCHA_APIKEY = "87v24q7i9VZDXsOi8CAG"
+
 
 @app.route('/generate-token', methods=['POST'])
 def generate_token():
@@ -62,8 +66,9 @@ def generate_token():
 
     return jsonify({"success": True, "authToken": token}), 200
 
+
 @app.route('/solve-truecaptcha', methods=['POST'])
-def solve_truecaptcha():
+async def solve_truecaptcha():
     token = request.headers.get('X-Auth-Token')
     if not token:
         return jsonify({"error": "Missing auth token"}), 401
@@ -84,7 +89,12 @@ def solve_truecaptcha():
     }
 
     try:
-        response = requests.post('https://api.apitruecaptcha.org/one/gettext', json=payload)
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            response = await client.post(
+                'https://api.apitruecaptcha.org/one/gettext',
+                json=payload
+            )
+
         if response.status_code != 200:
             return jsonify({'error': 'TrueCaptcha error'}), 502
 
@@ -93,4 +103,3 @@ def solve_truecaptcha():
 
     except Exception as e:
         return jsonify({'error': str(e)}), 500
-
