@@ -106,16 +106,21 @@ def check_and_drop_empty_tokens():
                 break
     except Exception as e:
         logger.error(f"Failed to check or drop tokens collection: {str(e)}")
+        is_background_task_running = False  # Ensure task stops on error
 
 def start_background_task():
     """Start a background thread to periodically check and drop empty tokens collection."""
     global is_background_task_running, background_thread
     try:
         if not is_background_task_running:
-            # Ensure any previous thread is not running
+            # Ensure any previous thread is terminated
             if background_thread is not None and background_thread.is_alive():
                 logger.warning("Previous background thread still alive, waiting to terminate")
                 background_thread.join(timeout=5.0)
+                if background_thread.is_alive():
+                    logger.error("Previous background thread did not terminate, forcing task stop")
+                    is_background_task_running = False
+                    return
             is_background_task_running = True
             background_thread = Thread(target=check_and_drop_empty_tokens, daemon=True)
             background_thread.start()
@@ -137,6 +142,7 @@ def generate_token():
         device_id = data.get('deviceId')
 
         if not license_key or not device_id:
+            logger.error("Missing licenseKey or deviceId in request")
             return jsonify({"success": False, "message": "Missing licenseKey or deviceId"}), 400
 
         def _generate_token():
@@ -173,10 +179,8 @@ def generate_token():
             }
             tokens_col.insert_one(token_doc)
 
-            # Start background task if not already running
-            start_background_task()
-
             logger.info(f"Token generation successful for license_key: {license_key}, device_id: {device_id}")
+            start_background_task()  # Start background task after token creation
             return token
 
         future = executor.submit(_generate_token)
@@ -193,11 +197,13 @@ def solve_truecaptcha():
     try:
         token = request.headers.get('X-Auth-Token')
         if not token:
+            logger.error("Missing auth token in request")
             return jsonify({"error": "Missing auth token"}), 401
 
         data = request.get_json(force=True, silent=True) or {}
         image_content = data.get('imageContent')
         if not image_content:
+            logger.error("Missing imageContent in request")
             return jsonify({"error": "Missing imageContent"}), 400
 
         image_content = strip_data_prefix(image_content)
@@ -212,6 +218,7 @@ def solve_truecaptcha():
         future.result(timeout=5)
 
         if not TRUECAPTCHA_SEMAPHORE.acquire(blocking=False):
+            logger.warning("Server busy, semaphore not acquired")
             return jsonify({"error": "Server busy, try again later"}), 429
 
         def _solve_captcha():
@@ -241,8 +248,10 @@ def solve_truecaptcha():
         try:
             future = executor.submit(_solve_captcha)
             result = future.result(timeout=25)
+            logger.info("Captcha solved successfully")
             return jsonify({"result": result}), 200
         except Exception as e:
+            logger.error(f"Captcha solving failed: {str(e)}")
             return jsonify({"error": str(e)}), 502
         finally:
             TRUECAPTCHA_SEMAPHORE.release()
@@ -274,6 +283,7 @@ def health():
             "timestamp": datetime.utcnow().isoformat(),
             "background_task_running": is_background_task_running
         }
+        logger.info(f"Health check: {status}")
         return jsonify(status), 200 if db_ok else 503
 
     except Exception as e:
