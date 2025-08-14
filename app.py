@@ -3,14 +3,17 @@ from flask_cors import CORS
 from pymongo import MongoClient
 from datetime import datetime
 import uuid
-import requests
+import asyncio
+import httpx  # async HTTP client
 
 app = Flask(__name__)
 CORS(app)
 app.config['JSON_AS_ASCII'] = False  # Hindi/Unicode support
 
 # ✅ MongoDB Atlas connection
-client = MongoClient("mongodb+srv://cloudman549:cloudman%40100@cluster0.7s7qba2.mongodb.net/license_db?retryWrites=true&w=majority&appName=Cluster0")
+client = MongoClient(
+    "mongodb+srv://cloudman549:cloudman%40100@cluster0.7s7qba2.mongodb.net/license_db?retryWrites=true&w=majority&appName=Cluster0"
+)
 db = client["license_db"]
 licenses_col = db["licenses"]
 tokens_col = db["tokens"]
@@ -23,6 +26,7 @@ tokens_col.create_index("created_at", expireAfterSeconds=720)  # TTL index for 1
 # ✅ TrueCaptcha credentials
 TRUECAPTCHA_USERID = "Alvish"
 TRUECAPTCHA_APIKEY = "87v24q7i9VZDXsOi8CAG"
+
 
 @app.route('/generate-token', methods=['POST'])
 def generate_token():
@@ -62,15 +66,17 @@ def generate_token():
 
     return jsonify({"success": True, "authToken": token}), 200
 
+
 @app.route('/solve-truecaptcha', methods=['POST'])
-def solve_truecaptcha():
+async def solve_truecaptcha():
+    # Enhanced token validation
     token = request.headers.get('X-Auth-Token')
     if not token:
         return jsonify({"error": "Missing auth token"}), 401
 
     token_doc = tokens_col.find_one({"token": token})
-    if not token_doc:
-        return jsonify({"error": "Invalid or expired token"}), 403
+    if not token_doc or token_doc.get("used", False):
+        return jsonify({"error": "Invalid, expired, or already used token"}), 403
 
     data = request.get_json()
     image_content = data.get('imageContent')
@@ -80,17 +86,43 @@ def solve_truecaptcha():
     payload = {
         'userid': TRUECAPTCHA_USERID,
         'apikey': TRUECAPTCHA_APIKEY,
-        'data': image_content
+        'data': image_content,
+        # Add more parameters if needed
+        'case': 'mixed',  # or 'upper' or 'lower' depending on your needs
+        'mode': 'human'   # or 'auto'
     }
 
     try:
-        response = requests.post('https://api.apitruecaptcha.org/one/gettext', json=payload)
-        if response.status_code != 200:
-            return jsonify({'error': 'TrueCaptcha error'}), 502
+        async with httpx.AsyncClient(timeout=30.0) as client:  # increased timeout
+            response = await client.post(
+                'https://api.apitruecaptcha.org/one/gettext',
+                json=payload,
+                headers={'Content-Type': 'application/json'}
+            )
 
-        result = response.json().get('result')
+        response_data = response.json()
+        
+        # Better error handling for TrueCaptcha API
+        if response.status_code != 200:
+            error_msg = response_data.get('error', 'Unknown TrueCaptcha error')
+            return jsonify({'error': f'TrueCaptcha error: {error_msg}'}), 502
+            
+        if not response_data.get('success', False):
+            return jsonify({'error': response_data.get('error', 'Captcha solve failed')}), 400
+
+        result = response_data.get('result')
+        if not result:
+            return jsonify({'error': 'Empty result from TrueCaptcha'}), 400
+
+        # Mark token as used after successful captcha solve
+        tokens_col.update_one(
+            {"token": token},
+            {"$set": {"used": True}}
+        )
+
         return jsonify({'result': result}), 200
 
+    except httpx.TimeoutException:
+        return jsonify({'error': 'TrueCaptcha API timeout'}), 504
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
+        return jsonify({'error': f'Internal server error: {str(e)}'}), 500

@@ -1,5 +1,5 @@
-flask
-flask-cors
-pymongo
-requests
-
+Flask==3.0.3
+Flask-Cors==4.0.1
+pymongo==4.6.1
+httpx==0.27.0
+gunicorn==22.0.0
