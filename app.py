@@ -82,6 +82,54 @@ def validate_license(license_key: str):
         logger.error(f"License validation failed: {str(e)}")
         return None
 
+def check_and_drop_empty_tokens():
+    """Check if tokens collection is empty and drop it if so, then stop the task."""
+    global is_background_task_running
+    try:
+        while is_background_task_running:
+            time.sleep(60)  # Check every 60 seconds
+            # Check if collection exists
+            if "tokens" in db.list_collection_names():
+                with client.start_session() as session:
+                    with session.start_transaction():
+                        count = tokens_col.count_documents({}, session=session)
+                        logger.info(f"Tokens collection has {count} documents")
+                    if count == 0:
+                        tokens_col.drop()  # Drop outside transaction
+                        logger.info("Tokens collection dropped as it was empty")
+                        is_background_task_running = False  # Stop the task
+                        break
+            else:
+                logger.info("Tokens collection does not exist, stopping background task")
+                is_background_task_running = False  # Stop if collection doesn't exist
+                break
+    except Exception as e:
+        logger.error(f"Failed to check or drop tokens collection: {str(e)}")
+        is_background_task_running = False  # Ensure task stops on error
+
+def start_background_task():
+    """Start a background thread to periodically check and drop empty tokens collection."""
+    global is_background_task_running, background_thread
+    try:
+        if not is_background_task_running:
+            # Ensure any previous thread is terminated
+            if background_thread is not None and background_thread.is_alive():
+                logger.warning("Previous background thread still alive, waiting to terminate")
+                background_thread.join(timeout=5.0)
+                if background_thread.is_alive():
+                    logger.error("Previous background thread did not terminate, forcing task stop")
+                    is_background_task_running = False
+                    return
+            is_background_task_running = True
+            background_thread = Thread(target=check_and_drop_empty_tokens, daemon=True)
+            background_thread.start()
+            logger.info("Background task for checking empty tokens collection started")
+        else:
+            logger.info("Background task already running, no need to start")
+    except Exception as e:
+        logger.error(f"Failed to start background task: {str(e)}")
+        is_background_task_running = False
+
 # ----------------------- Routes -----------------------
 
 @app.route('/generate-token', methods=['POST'])
@@ -131,6 +179,7 @@ def generate_token():
             tokens_col.insert_one(token_doc)
 
             logger.info(f"Token generation successful for license_key: {license_key}, device_id: {device_id}")
+            start_background_task()  # Start background task after token creation
             return token
 
         future = executor.submit(_generate_token)
@@ -181,7 +230,7 @@ def solve_truecaptcha():
                 response = requests.post(
                     TRUECAPTCHA_ENDPOINT,
                     json=payload,
-                    timeout=10
+                    timeout=20
                 )
                 response.raise_for_status()
                 result = response.json().get('result')
@@ -197,7 +246,7 @@ def solve_truecaptcha():
 
         try:
             future = executor.submit(_solve_captcha)
-            result = future.result(timeout=15)
+            result = future.result(timeout=25)
             logger.info("Captcha solved successfully")
             return jsonify({"result": result}), 200
         except Exception as e:
@@ -210,10 +259,41 @@ def solve_truecaptcha():
         logger.error(f"Captcha solving failed: {str(e)}")
         return jsonify({"error": str(e)}), 400
 
+@app.route('/health', methods=['GET'])
+def health():
+    """Health check endpoint"""
+    try:
+        def _check_db():
+            try:
+                db.command('ping')
+                return True
+            except Exception as e:
+                logger.error(f"DB health check failed: {str(e)}")
+                return False
+
+        future = executor.submit(_check_db)
+        db_ok = future.result(timeout=5)
+        
+        status = {
+            "status": "ok",
+            "database": "connected" if db_ok else "disconnected",
+            "workers": WORKER_COUNT,
+            "concurrency": TRUECAPTCHA_CONCURRENCY,
+            "timestamp": datetime.utcnow().isoformat(),
+            "background_task_running": is_background_task_running
+        }
+        logger.info(f"Health check: {status}")
+        return jsonify(status), 200 if db_ok else 503
+
+    except Exception as e:
+        logger.error(f"Health check failed: {str(e)}")
+        return jsonify({"status": "error", "error": str(e)}), 500
+
 # ----------------------- Start Background Task -----------------------
 if __name__ == '__main__':
     try:
         logger.info(f"Starting server with {WORKER_COUNT} workers")
+        start_background_task()  # Start the background task on server startup
         from gevent.pywsgi import WSGIServer
         http_server = WSGIServer(('0.0.0.0', 5000), app)
         http_server.serve_forever()
