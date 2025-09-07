@@ -15,8 +15,8 @@ MONGO_URI = os.environ.get("MONGO_URI") or (
     "mongodb+srv://cloudman549:cloudman%40100@cluster0.7s7qba2.mongodb.net/license_db?retryWrites=true&w=majority&appName=Cluster0"
 )
 DB_NAME = os.environ.get("DB_NAME", "license_db")
-TRUECAPTCHA_USERID = os.environ.get("TRUECAPTCHA_USERID", "Alvish")
-TRUECAPTCHA_APIKEY = os.environ.get("TRUECAPTCHA_APIKEY", "87v24q7i9VZDXsOi8CAG")
+TRUECAPTCHA_USERID = os.environ.get("TRUECAPTCHA_USERID", "Joginder")
+TRUECAPTCHA_APIKEY = os.environ.get("TRUECAPTCHA_APIKEY", "7tfz6wlAmN8YB4F3O2nB")
 TRUECAPTCHA_ENDPOINT = os.environ.get("TRUECAPTCHA_ENDPOINT", "https://api.apitruecaptcha.org/one/gettext")
 
 # Concurrency settings
@@ -87,7 +87,7 @@ def check_and_drop_empty_tokens():
     global is_background_task_running
     try:
         while is_background_task_running:
-            time.sleep(60)  # Check every 60 seconds
+            time.sleep(900)  # Check every 60 seconds
             # Check if collection exists
             if "tokens" in db.list_collection_names():
                 with client.start_session() as session:
