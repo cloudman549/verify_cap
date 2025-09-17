@@ -15,8 +15,8 @@ MONGO_URI = os.environ.get("MONGO_URI") or (
     "mongodb+srv://cloudman549:cloudman%40100@cluster0.7s7qba2.mongodb.net/license_db?retryWrites=true&w=majority&appName=Cluster0"
 )
 DB_NAME = os.environ.get("DB_NAME", "license_db")
-TRUECAPTCHA_USERID = os.environ.get("TRUECAPTCHA_USERID", "Joginder")
-TRUECAPTCHA_APIKEY = os.environ.get("TRUECAPTCHA_APIKEY", "7tfz6wlAmN8YB4F3O2nB")
+TRUECAPTCHA_USERID = os.environ.get("TRUECAPTCHA_USERID", "Alvish01")
+TRUECAPTCHA_APIKEY = os.environ.get("TRUECAPTCHA_APIKEY", "LPemRuVks0SKheShLt94")
 TRUECAPTCHA_ENDPOINT = os.environ.get("TRUECAPTCHA_ENDPOINT", "https://api.apitruecaptcha.org/one/gettext")
 
 # Concurrency settings
@@ -290,13 +290,13 @@ def health():
         return jsonify({"status": "error", "error": str(e)}), 500
 
 # ----------------------- Start Background Task -----------------------
-if __name__ == '__main__':
-    try:
-        logger.info(f"Starting server with {WORKER_COUNT} workers")
-        start_background_task()  # Start the background task on server startup
-        from gevent.pywsgi import WSGIServer
-        http_server = WSGIServer(('0.0.0.0', 5000), app)
-        http_server.serve_forever()
-    except Exception as e:
-        logger.error(f"Server failed to start: {str(e)}")
-        raise
+# if __name__ == '__main__':
+#     try:
+#         logger.info(f"Starting server with {WORKER_COUNT} workers")
+#         start_background_task()  # Start the background task on server startup
+#         from gevent.pywsgi import WSGIServer
+#         http_server = WSGIServer(('0.0.0.0', 5000), app)
+#         http_server.serve_forever()
+#     except Exception as e:
+#         logger.error(f"Server failed to start: {str(e)}")
+#         raise
