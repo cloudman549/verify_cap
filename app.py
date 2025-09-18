@@ -290,13 +290,13 @@ def health():
         return jsonify({"status": "error", "error": str(e)}), 500
 
 # ----------------------- Start Background Task -----------------------
-if __name__ == '__main__':
-    try:
-        logger.info(f"Starting server with {WORKER_COUNT} workers")
-        start_background_task()  # Start the background task on server startup
-        from gevent.pywsgi import WSGIServer
-        http_server = WSGIServer(('0.0.0.0', 5000), app)
-        http_server.serve_forever()
-    except Exception as e:
-        logger.error(f"Server failed to start: {str(e)}")
-        raise
+# if __name__ == '__main__':
+#     try:
+#         logger.info(f"Starting server with {WORKER_COUNT} workers")
+#         start_background_task()  # Start the background task on server startup
+#         from gevent.pywsgi import WSGIServer
+#         http_server = WSGIServer(('0.0.0.0', 5000), app)
+#         http_server.serve_forever()
+#     except Exception as e:
+#         logger.error(f"Server failed to start: {str(e)}")
+#         raise
