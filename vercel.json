@@ -11,15 +11,5 @@
       "src": "/(.*)",
       "dest": "app.py"
     }
-  ],
-  "env": {
-    "MONGO_URI": "mongodb+srv://cloudman549:cloudman%40100@cluster0.7s7qba2.mongodb.net/license_db?retryWrites=true&w=majority&appName=Cluster0",
-    "DB_NAME": "license_db",
-    "TRUECAPTCHA_USERID": "Alvish",
-    "TRUECAPTCHA_APIKEY": "87v24q7i9VZDXsOi8CAG",
-    "TRUECAPTCHA_ENDPOINT": "https://api.apitruecaptcha.org/one/gettext",
-    "WORKER_COUNT": "8",
-    "TRUECAPTCHA_CONCURRENCY": "30",
-    "TOKEN_TTL_SECONDS": "720"
-  }
+  ]
 }
